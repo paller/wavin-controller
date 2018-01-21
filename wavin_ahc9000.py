@@ -191,20 +191,95 @@ class _WavinAHC9000Modbus:
 
 class _ElementsCategory:
 
+    _category = 0x01
+    _pages = 48
+
+    _invalid_value = 0x7FFF
+
+    @property
+    def not_a_number(self):
+        return float('nan')
+
     def __init__(self, modbus: _WavinAHC9000Modbus):
         self.__modbus = modbus
 
-    def temp_air(self, channel: int):
-        return self.__modbus.read_register(1, 4, channel, 1)[0] / 10
+    @classmethod
+    def _valid_address(cls, address: int) -> bool:
+        return address > 0
+
+    def get_indexes(self):
+        valid_indexes = list()
+
+        for id in range(self._pages):
+            if self._valid_address(self.address(id)):
+                valid_indexes.append(id)
+
+        return valid_indexes
+
+    def address_low(self, channel: int) -> int:
+        return self.__modbus.read_register(self._category, 0, channel, 1)[0]
+
+    def address_high(self, channel: int) -> int:
+        return self.__modbus.read_register(self._category, 1, channel, 1)[0]
+
+    def address(self, channel: int) -> int:
+        address_part = self.__modbus.read_register(self._category, 0, channel, 2)
+        address = (address_part[1] << 16) | address_part[0]
+
+        return address
+
+    @classmethod
+    def _valid_value(cls, value: int):
+        return value < cls._invalid_value
+
+    def _read_and_sanitize_value(self, channel: int, index: int):
+        value = self.__modbus.read_register(self._category, index, channel, 1)[0]
+
+        if self._valid_value(value):
+            return value
+        else:
+            return self.not_a_number
+
+    def temp_air(self, channel: int) -> float:
+        return self._read_and_sanitize_value(channel, 4) / 10
+
+    def temp_floor(self, channel: int) -> float:
+        return self._read_and_sanitize_value(channel, 5) / 10
+
+    def temp_dew(self, channel: int) -> float:
+        return self._read_and_sanitize_value(channel, 6) / 10
+
+    def humidity(self, channel: int):
+        return self.__modbus.read_register(self._category, 7, channel, 1)[0]
+
+    def status(self, channel: int):
+        return self.__modbus.read_register(self._category, 8, channel, 1)[0]
+
+    def _rssi(self, channel: int):
+        return self.__modbus.read_register(self._category, 9, channel, 1)[0]
+
+    def rssi_base(self, channel: int):
+        return -74.0 + 0.5 * (self._rssi(channel) & 0xFF)
+
+    def rssi_remote(self, channel: int):
+        return -74.0 + 0.5 * (self._rssi(channel) >> 8)
+
+    def battery(self, channel: int):
+        return (self.__modbus.read_register(self._category, 10, channel, 1)[0] & 0x0F) * 10
+
+    def sync_group(self, channel: int):
+        return self.__modbus.read_register(self._category, 11, channel, 1)[0] & 0xFF
 
 
 class _ClockCategory:
 
+    _category = 5
+
     def __init__(self, modbus: _WavinAHC9000Modbus):
         self.__modbus = modbus
 
-    def read(self, channel: int) -> datetime:
-        registers = self.__modbus.read_register(5, 0, channel, 7)
+    def get(self) -> datetime:
+        registers = self.__modbus.read_register(self._category, 0, 0, 7)
 
         year = registers[0]
         month = registers[1]
@@ -216,7 +291,7 @@ class _ClockCategory:
 
         return datetime(year, month, day, hour, minute, second)
 
-    def write(self, date: datetime):
+    def set(self, date: datetime):
         registers = [0] * 7
 
         registers[0] = date.year
@@ -227,7 +302,7 @@ class _ClockCategory:
         registers[5] = date.minute
         registers[6] = date.second
 
-        self.__modbus.write_register(5, 0, 0, registers)
+        self.__modbus.write_register(self._category, 0, 0, registers)
 
 
 class WavinControl:
@@ -235,6 +310,6 @@ class WavinControl:
     def __init__(self, tty: str, id: int = 0x1):
         self._modbus = _WavinAHC9000Modbus(tty, id)
 
-        self.Clock = _ClockCategory(self._modbus)
-        self.Sensor = _ElementsCategory(self._modbus)
+        self.clock = _ClockCategory(self._modbus)
+        self.sensor = _ElementsCategory(self._modbus)
 
