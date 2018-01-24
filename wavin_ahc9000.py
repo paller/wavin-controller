@@ -196,34 +196,21 @@ class _ElementsCategory:
 
     _invalid_value = 0x7FFF
 
-    @property
-    def not_a_number(self):
-        return float('nan')
-
-    def __init__(self, modbus: _WavinAHC9000Modbus):
+    def __init__(self, channel: int, modbus: _WavinAHC9000Modbus):
+        self.channel = channel
         self.__modbus = modbus
 
-    @classmethod
-    def _valid_address(cls, address: int) -> bool:
-        return address > 0
+    @property
+    def address_low(self) -> int:
+        return self.__modbus.read_register(self._category, 0, self.channel, 1)[0]
 
-    def get_indexes(self):
-        valid_indexes = list()
+    @property
+    def address_high(self) -> int:
+        return self.__modbus.read_register(self._category, 1, self.channel, 1)[0]
 
-        for id in range(self._pages):
-            if self._valid_address(self.address(id)):
-                valid_indexes.append(id)
-
-        return valid_indexes
-
-    def address_low(self, channel: int) -> int:
-        return self.__modbus.read_register(self._category, 0, channel, 1)[0]
-
-    def address_high(self, channel: int) -> int:
-        return self.__modbus.read_register(self._category, 1, channel, 1)[0]
-
-    def address(self, channel: int) -> int:
-        address_part = self.__modbus.read_register(self._category, 0, channel, 2)
+    @property
+    def address(self) -> int:
+        address_part = self.__modbus.read_register(self._category, 0, self.channel, 2)
         address = (address_part[1] << 16) | address_part[0]
 
         return address
@@ -232,43 +219,60 @@ class _ElementsCategory:
     def _valid_value(cls, value: int):
         return value < cls._invalid_value
 
-    def _read_and_sanitize_value(self, channel: int, index: int):
-        value = self.__modbus.read_register(self._category, index, channel, 1)[0]
+    def _read_and_sanitize_value(self, index: int):
+        value = self.__modbus.read_register(self._category, index, self.channel, 1)[0]
 
         if self._valid_value(value):
             return value
         else:
-            return self.not_a_number
+            return float('nan')
 
-    def temp_air(self, channel: int) -> float:
-        return self._read_and_sanitize_value(channel, 4) / 10
+    @property
+    def temp_room(self) -> float:
+        """Return room temperature in Celsius."""
+        return self._read_and_sanitize_value(4) / 10
 
-    def temp_floor(self, channel: int) -> float:
-        return self._read_and_sanitize_value(channel, 5) / 10
+    @property
+    def temp_floor(self) -> float:
+        """Return floor temperature in Celsius."""
+        return self._read_and_sanitize_value(5) / 10
 
-    def temp_dew(self, channel: int) -> float:
-        return self._read_and_sanitize_value(channel, 6) / 10
+    @property
+    def temp_dew(self) -> float:
+        """Return dew temperature in Celsius."""
+        return self._read_and_sanitize_value(6) / 10
 
-    def humidity(self, channel: int):
-        return self.__modbus.read_register(self._category, 7, channel, 1)[0]
+    @property
+    def humidity(self) -> int:
+        """Return relative humidity in percent."""
+        return self.__modbus.read_register(self._category, 7, self.channel, 1)[0]
 
-    def status(self, channel: int):
-        return self.__modbus.read_register(self._category, 8, channel, 1)[0]
+    @property
+    def status(self) -> int:
+        return self.__modbus.read_register(self._category, 8, self.channel, 1)[0]
 
-    def _rssi(self, channel: int):
-        return self.__modbus.read_register(self._category, 9, channel, 1)[0]
+    @property
+    def _rssi(self) -> int:
+        return self.__modbus.read_register(self._category, 9, self.channel, 1)[0]
 
-    def rssi_base(self, channel: int):
-        return -74.0 + 0.5 * (self._rssi(channel) & 0xFF)
+    @property
+    def rssi_base(self) -> float:
+        """Return the RSSI value at the base in dBm."""
+        return -74.0 + 0.5 * (self._rssi & 0xFF)
 
-    def rssi_remote(self, channel: int):
-        return -74.0 + 0.5 * (self._rssi(channel) >> 8)
+    @property
+    def rssi_remote(self) -> float:
+        """Return the RSSI value at the sensor in dBm."""
+        return -74.0 + 0.5 * (self._rssi >> 8)
 
-    def battery(self, channel: int):
-        return (self.__modbus.read_register(self._category, 10, channel, 1)[0] & 0x0F) * 10
+    @property
+    def battery(self) -> int:
+        """Return the battery status in percent. Note that it only changes in 10% intervals."""
+        return (self.__modbus.read_register(self._category, 10, self.channel, 1)[0] & 0x0F) * 10
 
-    def sync_group(self, channel: int):
-        return self.__modbus.read_register(self._category, 11, channel, 1)[0] & 0xFF
+    @property
+    def sync_group(self) -> int:
+        return self.__modbus.read_register(self._category, 11, self.channel, 1)[0] & 0xFF
 
 
 class _ClockCategory:
@@ -278,7 +282,7 @@ class _ClockCategory:
     def __init__(self, modbus: _WavinAHC9000Modbus):
         self.__modbus = modbus
 
-    def get(self) -> datetime:
+    def now(self) -> datetime:
         registers = self.__modbus.read_register(self._category, 0, 0, 7)
 
         year = registers[0]
@@ -311,5 +315,20 @@ class WavinControl:
         self._modbus = _WavinAHC9000Modbus(tty, id)
 
         self.clock = _ClockCategory(self._modbus)
-        self.sensor = _ElementsCategory(self._modbus)
+
+    @classmethod
+    def __valid_address(cls, address: int) -> bool:
+        return address > 0
+
+    def get_indexes(self):
+        valid_indexes = list()
+
+        for id in range(_ElementsCategory._pages):
+            if self.__valid_address(self.sensor(id).address):
+                valid_indexes.append(id)
+
+        return valid_indexes
+
+    def sensor(self, channel: int):
+        return _ElementsCategory(channel, self._modbus)
 

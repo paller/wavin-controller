@@ -1,20 +1,20 @@
 # wavin-controller
 A controller for Wavin AHC 9000 written in Python with focus on home-automation.
 
-Example
-```python
+##### Example
+```
     # USB to RS485 converter at /dev/ttyUSB0
-    # Default modbus id is 0x01
-    wavin = WavinControl('/dev/ttyUSB0', 0x01)
+    In [1]: wavin = WavinControl('/dev/ttyUSB0')
 
-    print(wavin.Sensor.temp_air(0))
-    print(wavin.Sensor.temp_air(1))
-```
+    In [2]: wavin.get_indexes()
+    Out[2]: [0, 1, 2, 3, 4]
 
-Which will get you
-```
-    23.3
-    22.7
-```
+    In [3]: kitchen = wavin.sensor(3)
 
-TODO: Add examples of new element attributes.
+    In [4]: kitchen.temp_air
+    Out[4]: 22.4
+
+    In [5]: kitchen.battery
+    Out[5]: 80
+```
+There you have it; room temperature 22.4°C and the sensor got 80% battery.
