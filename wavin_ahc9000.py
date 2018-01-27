@@ -52,8 +52,7 @@ class _WavinAHC9000Modbus:
 
         # Sanitize just the most fundamental.
         if length < 1:
-            # TODO: Make an explosion
-            return None
+            raise Exception('Length must be larger than zero.')
 
         modbus_cmd = bytes([self._id, self.Commands.read, category, index, page, length])
         modbus_cmd += self._crc(modbus_cmd)
@@ -70,16 +69,19 @@ class _WavinAHC9000Modbus:
         # Handle some basic failures.
         # First check if we have enough data for an error-response.
         if len(modbus_response) < 3:
-            # TODO: Handle absurd case
-            return 1
+            raise serial.SerialException('Missing response.')
+
         # If an error-code was returned the command-field will not match.
         if modbus_response[1] != self.Commands.read:
-            # TODO: An error occurred. Its error-code can be read from modbus_response[2]
-            return 2
+            error_code = hex(modbus_response[2])
+            raise serial.SerialException('Received error code: {} in response to register-read.'.format(error_code))
+
         # Make sure we receive the requested amount of data. Nothing more, nothing less.
         if (len(modbus_response) - self._header_length - self._crc_length) != 2 * length:
-            # TODO: The response does not match our expectations
-            return 3
+            expected_data = 2 * length + self._header_length + self._crc_length
+            actual_data = len(modbus_response)
+            raise serial.SerialException(
+                'Incorrect amount of data received. Expected {} but received {}.'.format(expected_data, actual_data))
 
         # Strip away the header and CRC and convert into an array of registers.
         registers = self._unpack(modbus_response[self._header_length:-self._crc_length])
@@ -190,7 +192,6 @@ class _WavinAHC9000Modbus:
 
 
 class _ElementsCategory:
-
     _category = 0x01
     _pages = 48
 
@@ -276,7 +277,6 @@ class _ElementsCategory:
 
 
 class _ClockCategory:
-
     _category = 5
 
     def __init__(self, modbus: _WavinAHC9000Modbus):
@@ -331,4 +331,3 @@ class WavinControl:
 
     def sensor(self, channel: int):
         return _ElementsCategory(channel, self._modbus)
-
