@@ -276,6 +276,79 @@ class _ElementsCategory:
         return self.__modbus.read_register(self._category, 11, self.channel, 1)[0] & 0xFF
 
 
+class _PackedDataCategory:
+    _category = 2
+    _pages = 17
+
+    def __init__(self, channel: int, modbus: _WavinAHC9000Modbus):
+        if channel >= self._pages:
+            raise ValueError('Invalid channel: {}. Should be in range [0, {}]'.format(channel, self._pages - 1))
+
+        self.channel = channel
+        self.__modbus = modbus
+
+    def __read_temp(self, index: int):
+        return self.__modbus.read_register(self._category, index, self.channel, 1)[0] / 10
+
+    def __write_temp(self, index: int, temperature: float):
+        if (temperature < 0) or (temperature > 2 ** 16):
+            raise ValueError('Invalid temperature {:.1f}C'.format(temperature))
+
+        return self.__modbus.write_register(self._category, index, self.channel, [int(temperature * 10)])
+
+    @property
+    def manual_temperature(self) -> float:
+        return self.__read_temp(0)
+
+    @manual_temperature.setter
+    def manual_temperature(self, temperature: float):
+        self.__write_temp(0, temperature)
+
+    @property
+    def comfort_temperature(self) -> float:
+        return self.__read_temp(1)
+
+    @comfort_temperature.setter
+    def comfort_temperature(self, temperature: float):
+        self.__write_temp(1, temperature)
+
+    @property
+    def eco_temperature(self) -> float:
+        return self.__read_temp(2)
+
+    @eco_temperature.setter
+    def eco_temperature(self, temperature: float):
+        self.__write_temp(2, temperature)
+
+    @property
+    def holiday_temperature(self) -> float:
+        return self.__read_temp(3)
+
+    @holiday_temperature.setter
+    def holiday_temperature(self, temperature: float):
+        self.__write_temp(3, temperature)
+
+    @property
+    def standby_temperature(self) -> float:
+        return self.__read_temp(4)
+
+    @standby_temperature.setter
+    def standby_temperature(self, temperature: float):
+        self.__write_temp(4, temperature)
+
+    @property
+    def party_temperature(self) -> float:
+        return self.__read_temp(5)
+
+    @party_temperature.setter
+    def party_temperature(self, temperature: float):
+        self.__write_temp(5, temperature)
+
+    @property
+    def desired_temperature(self) -> float:
+        return self.__read_temp(16)
+
+
 class _ClockCategory:
     _category = 5
 
@@ -309,12 +382,45 @@ class _ClockCategory:
         self.__modbus.write_register(self._category, 0, 0, registers)
 
 
+class _InfoCategory:
+    _category = 7
+
+    def __init__(self, modbus: _WavinAHC9000Modbus):
+        self.__modbus = modbus
+
+    @property
+    def hw_version(self) -> str:
+        version_number = self.__modbus.read_register(self._category, 2, 0, 1)[0] & 0x7F
+        version = 'MC110{}'.format(version_number)
+        return version
+
+    @property
+    def sw_version(self) -> str:
+        version_number = self.__modbus.read_register(self._category, 3, 0, 1)[0]
+
+        beta_number = version_number & 0x0F
+        version = 'MC610{:X}'.format((version_number >> 4) & 0xFF)
+
+        if beta_number:
+            version += 'b{}'.format(beta_number)
+
+        return version
+
+    @property
+    def device_name(self) -> str:
+        version_number = self.__modbus.read_register(self._category, 4, 0, 1)[0]
+        version = 'AC-{}'.format(version_number)
+
+        return version
+
+
 class WavinControl:
 
     def __init__(self, tty: str, id: int = 0x1):
         self._modbus = _WavinAHC9000Modbus(tty, id)
 
         self.clock = _ClockCategory(self._modbus)
+        self.info = _InfoCategory(self._modbus)
 
     @classmethod
     def __valid_address(cls, address: int) -> bool:
@@ -331,3 +437,6 @@ class WavinControl:
 
     def sensor(self, channel: int):
         return _ElementsCategory(channel, self._modbus)
+
+    def room(self, channel: int):
+        return _PackedDataCategory(channel, self._modbus)
