@@ -507,3 +507,5 @@ class WavinControl:
 
     def room(self, channel: int):
         return _PackedDataCategory(channel, self._modbus)
+
+    __version__ = '1.0'
