@@ -31,6 +31,16 @@ class _WavinAHC9000Modbus:
         read = 0x43
         write = 0x44
 
+    class Category(IntEnum):
+        main = 0x00
+        elements = 0x01
+        packed_data = 0x02
+        channels = 0x03
+        relays = 0x04
+        clock = 0x05
+        schedules = 0x06
+        info = 0x07
+
     def __init__(self, tty: str, id: int):
         self._id = id
 
@@ -47,9 +57,7 @@ class _WavinAHC9000Modbus:
             print('Could not open: {}'.format(tty))
             raise e
 
-    def read_register(self, category: int, index: int, page: int, length: int):
-        """TODO: Describe inputs """
-
+    def read_register(self, category: int, index: int, page: int, length: int) -> List[int]:
         # Sanitize just the most fundamental.
         if length < 1:
             raise Exception('Length must be larger than zero.')
@@ -88,8 +96,6 @@ class _WavinAHC9000Modbus:
         return registers
 
     def write_register(self, category: int, index: int, page: int, data: List[int]):
-        """TODO: Describe inputs """
-
         # Number of registers to write.
         num_registers = len(data)
 
@@ -100,24 +106,46 @@ class _WavinAHC9000Modbus:
         modbus_cmd = bytes([self._id, self.Commands.write, category, index, page, num_registers]) + payload
         modbus_cmd += self._crc(modbus_cmd)
 
-        # Request registers.
+        # Write registers.
         self._dialout.reset_input_buffer()
         self._dialout.reset_output_buffer()
         self._dialout.write(modbus_cmd)
         self._dialout.flush()
 
-        # Read register response.
-        status = self._dialout.read(self._header_length + num_registers + self._crc_length)
+        # Read response. On success the written payload will be read back to us.
+        status = self._dialout.read(self._header_length + len(payload) + self._crc_length)
 
-        # TODO: Handle errors on write
-        return status
+        # Handle some basic failures.
+        # First check if we have enough data for an error-response.
+        if len(status) < 3:
+            raise serial.SerialException('No response on write.')
+
+        # If an error-code was returned the command-field will not match.
+        if status[1] != self.Commands.write:
+            error_code = hex(status[1])
+            raise serial.SerialException('Received error code: {} in response to register-write.'.format(error_code))
+
+        # Validate written data.
+        length = status[2]
+        written_data = status[3:-2]
+        crc = status[-2:]
+
+        if length != len(written_data):
+            raise serial.SerialException('Received incomplete data in response to write.')
+
+        if crc != self._crc(status[:-2]):
+            raise serial.SerialException('CRC error in received response to write.')
+
+        if written_data != payload:
+            raise serial.SerialException(
+                'Incorrect data written to register. Expected "{}" but got "{}".'.format(data, written_data))
 
     @classmethod
     def _pack(cls, registers: List[int]) -> bytes:
-        """Convert a register array into a byte array.
+        """Convert a register array into bytes.
 
         Convert each of the 16 bit registers into two bytes in the correct sequence for Modbus and
-        return it as a bytes().
+        return it as bytes().
         """
         length = len(registers)
 
@@ -192,14 +220,13 @@ class _WavinAHC9000Modbus:
 
 
 class _ElementsCategory:
-    _category = 0x01
     _pages = 48
-
     _invalid_value = 0x7FFF
 
     def __init__(self, channel: int, modbus: _WavinAHC9000Modbus):
         self.channel = channel
         self.__modbus = modbus
+        self._category = modbus.Category.elements
 
     @property
     def address_low(self) -> int:
@@ -277,7 +304,6 @@ class _ElementsCategory:
 
 
 class _PackedDataCategory:
-    _category = 2
     _pages = 17
 
     def __init__(self, channel: int, modbus: _WavinAHC9000Modbus):
@@ -286,6 +312,7 @@ class _PackedDataCategory:
 
         self.channel = channel
         self.__modbus = modbus
+        self._category = modbus.Category.packed_data
 
     def __read_temp(self, index: int):
         return self.__modbus.read_register(self._category, index, self.channel, 1)[0] / 10
@@ -350,10 +377,10 @@ class _PackedDataCategory:
 
 
 class _ClockCategory:
-    _category = 5
 
     def __init__(self, modbus: _WavinAHC9000Modbus):
         self.__modbus = modbus
+        self._category = modbus.Category.clock
 
     def now(self) -> datetime:
         registers = self.__modbus.read_register(self._category, 0, 0, 7)
@@ -383,10 +410,10 @@ class _ClockCategory:
 
 
 class _InfoCategory:
-    _category = 7
 
     def __init__(self, modbus: _WavinAHC9000Modbus):
         self.__modbus = modbus
+        self._category = modbus.Category.info
 
     @property
     def hw_version(self) -> str:
