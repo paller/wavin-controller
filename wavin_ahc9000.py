@@ -372,6 +372,46 @@ class _PackedDataCategory:
         self.__write_temp(5, temperature)
 
     @property
+    def min_temperature(self) -> float:
+        return self.__read_temp(8)
+
+    @min_temperature.setter
+    def min_temperature(self, temperature: float):
+        self.__write_temp(8, temperature)
+
+    @property
+    def max_temperature(self) -> float:
+        return self.__read_temp(9)
+
+    @max_temperature.setter
+    def max_temperature(self, temperature: float):
+        self.__write_temp(9, temperature)
+
+    @property
+    def min_floor_temperature(self) -> float:
+        return self.__read_temp(10)
+
+    @min_floor_temperature.setter
+    def min_floor_temperature(self, temperature: float):
+        self.__write_temp(10, temperature)
+
+    @property
+    def max_floor_temperature(self) -> float:
+        return self.__read_temp(11)
+
+    @max_floor_temperature.setter
+    def max_floor_temperature(self, temperature: float):
+        self.__write_temp(11, temperature)
+
+    @property
+    def hysteresis(self):
+        return self.__read_temp(14)
+
+    @hysteresis.setter
+    def hysteresis(self, temperature: float):
+        self.__write_temp(14, temperature)
+
+    @property
     def desired_temperature(self) -> float:
         return self.__read_temp(16)
 
