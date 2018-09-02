@@ -375,6 +375,24 @@ class _PackedDataCategory:
     def desired_temperature(self) -> float:
         return self.__read_temp(16)
 
+class _ChannelCategory:
+    def __init__(self, channel: int, modbus: _WavinAHC9000Modbus):
+        self.__modbus = modbus
+        self.channel = channel
+        self._category = modbus.Category.channels
+
+    def _read_channel(self):
+        return self.__modbus.read_register(self._category, 0, self.channel, 4)
+
+    @property
+    def output_on(self) -> bool:
+        time = self._read_channel()[0]
+        return time & 16 > 0
+
+    @property
+    def current_consumption(self) -> float:
+        current = self._read_channel()[1]
+        return current * 24 / 540.0
 
 class _ClockCategory:
 
@@ -467,3 +485,6 @@ class WavinControl:
 
     def room(self, channel: int):
         return _PackedDataCategory(channel, self._modbus)
+
+    def channel(self, channel: int):
+        return _ChannelCategory(channel, self._modbus) 
