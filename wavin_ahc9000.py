@@ -377,21 +377,22 @@ class _PackedDataCategory:
 
 class _ChannelCategory:
     def __init__(self, channel: int, modbus: _WavinAHC9000Modbus):
+        self.channel = channel        
         self.__modbus = modbus
-        self.channel = channel
         self._category = modbus.Category.channels
 
-    def _read_channel(self):
+    def __read_channel(self):
         return self.__modbus.read_register(self._category, 0, self.channel, 4)
 
     @property
     def output_on(self) -> bool:
-        time = self._read_channel()[0]
-        return time & 16 > 0
+        time = self.__read_channel()[0]
+        return time & 0b10000 > 0
 
-    @property
+    @property    
     def current_consumption(self) -> float:
-        current = self._read_channel()[1]
+        """Return power concumption of the actualor on the channel in W"""
+        current = self.__read_channel()[1]
         return current * 24 / 540.0
 
 class _ClockCategory:
